@@ -1,6 +1,8 @@
 import heapq
 import random
 import matplotlib.pyplot as plt
+import time
+import tracemalloc
 
 class Grid:
     def __init__(self, rows, cols):
@@ -21,11 +23,11 @@ class Grid:
         return start, goal
 
     def generate_ramp(self): #function to generate ramps (cost == 2) on map
-        random.seed(42) #seed for reproducibility (keeps ramp pistion the same every time)
+        random.seed(42) #seed for reproducibility (keeps ramp position the same every time)
         for r in range(self.rows): #for each node in row,
             for c in range(self.cols): #and for each node in column:
                 if self.grid[r][c] == 0 and random.random() < 0.1: #if the current node == 0 and random value is below 0.1:
-                    self.grid[r][c] = 2 #set current node to 2 (traversable node, but costs 2 to traversal)
+                    self.grid[r][c] = 2 #set current node to 2 (traversable node, but costs 2 to traversal over)
 
     def display_grid(self): #function to print grid
         print("Start node:", self.start)
@@ -42,7 +44,7 @@ class VisualiseProgram:
         self.fig, self.ax = self.grid_visualisation()
 
     def grid_visualisation(self): #function to visualise the grid
-        rows, cols = len(self.grid), len(self.grid[0])
+        rows, cols = len(self.grid), len(self.grid)
         fig, ax = plt.subplots() #fig is the canvas, ax is the the 'drawing' on the canvas
         ax.set_xlim(0, cols) #sets the limit of colums in visualisation so that it matches the 2D grid
         ax.set_ylim(0, rows) #sets the limit of rows in visualisation so that it matches the 2D grid
@@ -60,7 +62,7 @@ class VisualiseProgram:
 
         ax.add_patch(plt.Rectangle((self.start[1], self.start[0]), 1, 1, color='green')) #plot a 1x1 green rectangle that represents the start node
         ax.add_patch(plt.Rectangle((self.goal[1], self.goal[0]), 1, 1, color='red')) #plot a 1x1 red rectagle that represents the goal node
-        plt.pause(0.1) #giive a small timeframe for the visualisation to be updated before shown
+        plt.pause(0.1) #giive a small timeframe for the visualisation to be updated before showing the next frame
 
         return fig, ax 
 
@@ -81,18 +83,18 @@ class VisualiseProgram:
                     self.ax.add_patch(plt.Rectangle((node[1], node[0]), 1, 1, color='yellow')) #then plot a 1x1 yellow rectangle
                 plt.pause(0.1) #timeframe between each yellow rectangle being plotted
 
-        plt.show() #displays the final visualisation of the grid
+        plt.close() #closes the grid when visualisation is finished
 
 class UniformCostSearch:
     def __init__(self, grid, start, goal, visualisation):
-        self.grid = grid
+        self.grid = grid    
         self.start = start
         self.goal = goal
         self.visualisation = visualisation
 
-    def search_algorithm(self): #function to implement UCS on the grid
+    def search_algorithm_graph(self): #function to implement UCS-graph on the grid
         rows, cols = len(self.grid), len(self.grid[0]) #retrieves the dimension of the grid
-        priority_queue = [] #empty list for priority_queue
+        priority_queue = [] #empty list for priority_queue of noeds wirth smallest cost
         heapq.heappush(priority_queue, (0, self.start)) #adds the start node to priority_queue with cost of 0
         visited = set() #keeps track of already visited nodes to prevent revisiting the same node twice
         parent_map = {self.start: None} #reconstructs the path from start
@@ -109,53 +111,117 @@ class UniformCostSearch:
 
             if current == self.goal: #if the curently visited node == goal node
                 path = [] #empty list for storing the path
-                while current is not None: #backtracks from goal to start
-                    path.append(current)
+                total_cost = 0 #varibale to store total cost of traversed nodes
+                while current is not None: #checks if current node is not None
+                    if current != self.start:
+                        path.append(current)
+                        r, c = current
+                        total_cost += 1 if self.grid[r][c] == 0 else 2
                     current = parent_map[current]
 
                 self.visualisation.visualise_shortest_path(path[::-1]) #visualises the shortest path
-                return path[::-1] #returns the path, from start to goal by going -1 form current node
+                return path[::-1], total_cost #returns the path from start to goal by going -1 form current node (back in list), total_cost
 
             #list of all possible neighbour positions to visit
             neighbours = [
-                (current[0] + 1, current[1]),
-                (current[0] - 1, current[1]),
-                (current[0], current[1] + 1),
-                (current[0], current[1] - 1) 
+                (current[0] + 1, current[1]), #down
+                (current[0] - 1, current[1]), #up
+                (current[0], current[1] + 1), #left
+                (current[0], current[1] - 1)  #right
             ]
 
-            for neighbour in neighbours:
-                r, c = neighbour
-                if 0 <= r < rows and 0 <= c < cols and self.grid[r][c] != 1:
-                    move_cost = 1 if self.grid[r][c] == 0 else 2  # Cost is 1 for normal nodes, 2 for ramps
-                    new_cost = cost + move_cost
+            for n in neighbours:
+                r, c = n
+                if 0 <= r < rows and 0 <= c < cols and self.grid[r][c] != 1: #valid and traversable neighbour
+                    move_cost = 1 if self.grid[r][c] == 0 else 2 #cost is 1 for normal nodes, 2 for ramps
+                    new_cost = cost + move_cost #cost of moving to the next position
 
-                    if neighbour not in cost_map or new_cost < cost_map[neighbour]: 
-                        cost_map[neighbour] = new_cost
-                        heapq.heappush(priority_queue, (new_cost, neighbour))
-                        parent_map[neighbour] = current
+                    if n not in cost_map or new_cost < cost_map[n]: #update only if the new path is better
+                        cost_map[n] = new_cost
+                        heapq.heappush(priority_queue, (new_cost, n)) #update priority queue
+                        parent_map[n] = current
 
-        plt.show()
+        #plt.show()
         return None
+    
+    def search_algorithm_tree(self): #function to implement UCS-tree on the grid 
+            rows, cols = len(self.grid), len(self.grid[0]) #retrieves the dimension of the grid
+            priority_queue = [] #empty list for priority_queue of nodes with smallest cost
+            heapq.heappush(priority_queue, (0, self.start)) #adds the start node to priority_queue with cost of 0
+            #visited = set() #keeps track of already visited nodes to prevent revisiting the same node twice
+            parent_map = {self.start: None} #reconstructs the path from start
+            cost_map = {self.start: 0} #keeps track of the total cost
+
+            while priority_queue:   
+                cost, current = heapq.heappop(priority_queue) #pops the node with the lowest cost from the priority_queue
+
+                #if current in visited: #if current node has already been visited, continue
+                #    continue
+
+                #visited.add(current) #otherwise, add the current node to the visited set to prevent revisiting nodes and save time
+                self.visualisation.visualise_search(current) #reflect the currently visited node in the visualisation
+
+                if current == self.goal: #if the curently visited node == goal node
+                    path = [] #empty list for storing the path
+                    total_cost = 0
+                    while current is not None: #backtracks from goal to start if current exists
+                        if current != self.start:
+                            path.append(current)
+                            r, c = current
+                            total_cost += 1 if self.grid[r][c] == 0 else 2
+                        current = parent_map[current] #creates parent map of current exisisting nodes
+
+                    self.visualisation.visualise_shortest_path(path[::-1]) #visualises the shortest path found
+                    return path[::-1], total_cost #returns the path from start to goal by going -1 from current node total_cost
+
+                #list of all possible neighbour positions to visit
+                neighbours = [
+                    (current[0] + 1, current[1]), #down
+                    (current[0] - 1, current[1]), #up
+                    (current[0], current[1] + 1), #right
+                    (current[0], current[1] - 1)  #left
+                ]
+
+                for n in neighbours:
+                    r, c = n
+                    if 0 <= r < rows and 0 <= c < cols and self.grid[r][c] != 1:  #valid and traversable neighbour
+                        move_cost = 1 if self.grid[r][c] == 0 else 2  #cost is 1 for normal nodes, 2 for ramps
+                        new_cost = cost + move_cost #cost of moving to the next position
+
+                        if n not in cost_map or new_cost < cost_map[n]: #update only if the new path is better
+                            cost_map[n] = new_cost
+                            heapq.heappush(priority_queue, (new_cost, n)) #update priority queue
+                            parent_map[n] = current
+
+            #plt.show()
+            return None
 
 class ProgramLoop:
     def __init__(self):
-        self.rows, self.cols = 20, 20
+        self.rows, self.cols = 20, 20 #sets size of grid to 20x20
 
     def run(self):
+        tracemalloc.start() #starts tracking memory used
         grid = Grid(self.rows, self.cols)
         grid.display_grid() #initialise the grid
 
         visualisation = VisualiseProgram(grid.grid, grid.start, grid.goal) #initialise visualisation
 
+        start = time.time() #store start of search in variable "start"
         ucs = UniformCostSearch(grid.grid, grid.start, grid.goal, visualisation)
-        path = ucs.search_algorithm() #run Uniform Cost Search algorithm
+        path_found, total_cost = ucs.search_algorithm_tree() #run path Uniform Cost Search algorithm
+        end = time.time() #store end of search in variable "end"
+        print(f"\nTime taken: {end - start}") #print out the end time - start time = time taken for search + vis
 
-        if path:
-            print(f"\nNumber of nodes in the shortest path: {len(path)}")
-            #print(f"\nFinal cost of traversing form start to goal: {len()} ")
+        current, peak = tracemalloc.get_traced_memory() #retrieves traced memory from start() to stop()
+        print(f"\nCurrent memory usage is {current / 10**6}MB; Peak was {peak / 10**6}MB")
+        tracemalloc.stop() #stops tracking memory used
+
+        if path_found:
+            print(f"\nNumber of nodes in the shortest path: {len(path_found)}")
+            print(f"The total cost of traversing through the shortest path: {total_cost}")
             print("\nPath found:")
-            for node in path:
+            for node in path_found:
                 print(node)
         else:
             print("\nNo path found.")
